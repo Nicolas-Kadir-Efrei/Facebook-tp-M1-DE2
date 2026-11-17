@@ -1,0 +1,783 @@
+{
+  "info": {
+    "name": "My Social Networks API v2.0.0",
+    "description": "# My Social Networks API v2.0.0\n\nDocumentation Postman de la refonte API Facebook (événements, groupes, discussions, albums, sondages, billetterie, shopping list, covoiturage).\n\n## Base URL\n`http://localhost:3000`\n\n## Ordre de test recommandé\n1. Dossier **0. Setup** (ping + charger les IDs)\n2. Créer utilisateurs (si besoin) → groupe → événement\n3. Discussions, albums, sondages, billetterie, shopping, covoiturage\n4. Les DELETE uniquement à la fin\n\n## Modules couverts\n| Module | Base path |\n|--------|-----------|\n| Utilisateurs | `/api/users` |\n| Groupes | `/api/groups` |\n| Événements | `/api/events` |\n| Discussions | `/api/discussions` |\n| Albums photo | `/api/albums` |\n| Sondages | `/api/polls` |\n| Billetterie | `/api/tickets` |\n| Shopping list | `/api/shopping` |\n| Covoiturage (bonus) | `/api/carpools` |\n\n## Règles métier globales\n- Email utilisateur **unique**\n- Événement : ≥1 organisateur, N participants\n- Groupe : ≥1 admin, N membres ; types `PUBLIC` / `PRIVATE` / `SECRET`\n- Fil de discussion lié à **1 groupe OU 1 événement** (pas les deux)\n- Sondage créé par un **organisateur** ; **1 réponse** par question et par participant\n- Billetterie : événement `PUBLIC` + `ticketingEnabled` ; **1 billet / email / événement**\n- Shopping list : nom **unique** par événement\n- Covoiturage : `carpoolingEnabled` requis",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "userId", "value": "" },
+    { "key": "userId2", "value": "" },
+    { "key": "groupId", "value": "" },
+    { "key": "eventId", "value": "" },
+    { "key": "threadId", "value": "" },
+    { "key": "messageId", "value": "" },
+    { "key": "albumId", "value": "" },
+    { "key": "photoId", "value": "" },
+    { "key": "pollId", "value": "" },
+    { "key": "questionId", "value": "" },
+    { "key": "optionId", "value": "" },
+    { "key": "ticketTypeId", "value": "" },
+    { "key": "shoppingId", "value": "" },
+    { "key": "carpoolId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup (À FAIRE EN PREMIER)",
+      "description": "## Setup\nPrépare l'environnement de test.\n\n**Objectif** : vérifier que le serveur répond et remplir automatiquement les variables `userId` / `userId2`.\n\nSans ce setup, les URLs du type `/api/users/{{userId}}` renvoient 404 car l'ID est vide.",
+      "item": [
+        {
+          "name": "GET /api - ping serveur",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api",
+            "description": "## Fonctionnel\nVérifie que l'API est démarrée (`npm start`).\n\n## URL\n`GET {{baseUrl}}/api`\n\n## Réponse 200\n```json\n{\n  \"message\": \"My Social Networks API v2.0.0\",\n  \"version\": \"2.0.0\",\n  \"endpoints\": {\n    \"users\": \"/api/users\",\n    \"events\": \"/api/events\",\n    \"groups\": \"/api/groups\",\n    \"discussions\": \"/api/discussions\",\n    \"albums\": \"/api/albums\",\n    \"polls\": \"/api/polls\",\n    \"tickets\": \"/api/tickets\",\n    \"shopping\": \"/api/shopping\",\n    \"carpools\": \"/api/carpools (bonus)\"\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "Setup - Charger les IDs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Serveur OK', function () { pm.response.to.have.status(200); });",
+                  "const users = pm.response.json();",
+                  "if (!Array.isArray(users) || users.length < 2) {",
+                  "  console.log('Pas assez d utilisateurs. Lance Créer utilisateur puis Créer 2e utilisateur.');",
+                  "} else {",
+                  "  pm.collectionVariables.set('userId', users[0].id);",
+                  "  pm.collectionVariables.set('userId2', users[1].id);",
+                  "  console.log('userId =', users[0].id);",
+                  "  console.log('userId2 =', users[1].id);",
+                  "}",
+                  "pm.test('userId rempli', function () {",
+                  "  pm.expect(pm.collectionVariables.get('userId')).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/users",
+            "description": "## Fonctionnel\nCharge la liste des utilisateurs et enregistre automatiquement :\n- `{{userId}}` = 1er utilisateur\n- `{{userId2}}` = 2e utilisateur\n\n## URL\n`GET {{baseUrl}}/api/users`\n\n## Réponse 200\nTableau d'utilisateurs :\n```json\n[\n  {\n    \"id\": \"uuid\",\n    \"email\": \"alice@example.com\",\n    \"firstName\": \"Alice\",\n    \"lastName\": \"Martin\",\n    \"bio\": \"...\",\n    \"avatar\": null,\n    \"createdAt\": \"...\",\n    \"updatedAt\": \"...\"\n  }\n]\n```\n\nLe mot de passe n'est **jamais** renvoyé."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Utilisateurs",
+      "description": "## Utilisateurs (CRUDS)\n**Base** : `/api/users`\n\n### Attributs\n| Champ | Type | Obligatoire | Notes |\n|-------|------|-------------|-------|\n| id | uuid | auto | |\n| email | string | oui | **unique** |\n| firstName | string | oui | |\n| lastName | string | oui | |\n| password | string | non | jamais exposé en lecture |\n| bio | string | non | |\n| avatar | string | non | URL |\n\n### Règles\n- Deux utilisateurs ne peuvent pas avoir le même email → **409**\n- Suppression en cascade sur les liaisons (messages, etc.)",
+      "item": [
+        {
+          "name": "Créer utilisateur",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('email1', 'user1_' + Date.now() + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('userId', j.id);",
+                  "  console.log('userId =', j.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email1}}\",\n  \"firstName\": \"Alice\",\n  \"lastName\": \"Martin\",\n  \"bio\": \"Organisatrice\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users",
+            "description": "## Fonctionnel\nCrée un utilisateur. L'email est généré unique automatiquement (`user1_<timestamp>@example.com`).\nSauvegarde `{{userId}}`.\n\n## URL\n`POST {{baseUrl}}/api/users`\n\n## Body (entrée)\n```json\n{\n  \"email\": \"alice@example.com\",\n  \"firstName\": \"Alice\",\n  \"lastName\": \"Martin\",\n  \"bio\": \"Organisatrice\",\n  \"avatar\": \"https://...\",\n  \"password\": \"secret\"\n}\n```\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"email\": \"user1_...@example.com\",\n  \"firstName\": \"Alice\",\n  \"lastName\": \"Martin\",\n  \"bio\": \"Organisatrice\",\n  \"avatar\": null,\n  \"createdAt\": \"...\",\n  \"updatedAt\": \"...\"\n}\n```\n\n## Erreurs\n- **400** : email / firstName / lastName manquants\n- **409** : email déjà utilisé"
+          }
+        },
+        {
+          "name": "Créer 2e utilisateur",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('email2', 'user2_' + Date.now() + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('userId2', j.id);",
+                  "  console.log('userId2 =', j.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email2}}\",\n  \"firstName\": \"Bob\",\n  \"lastName\": \"Dupont\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users",
+            "description": "## Fonctionnel\nCrée un second utilisateur (participant / membre). Sauvegarde `{{userId2}}`.\n\n## URL\n`POST {{baseUrl}}/api/users`\n\n## Réponse 201\nMême structure que « Créer utilisateur »."
+          }
+        },
+        {
+          "name": "Lister utilisateurs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users",
+            "description": "## Fonctionnel\nRetourne tous les utilisateurs (sans mot de passe).\n\n## URL\n`GET {{baseUrl}}/api/users`\n\n## Réponse 200\n```json\n[\n  {\n    \"id\": \"uuid\",\n    \"email\": \"...\",\n    \"firstName\": \"...\",\n    \"lastName\": \"...\",\n    \"bio\": null,\n    \"avatar\": null,\n    \"createdAt\": \"...\",\n    \"updatedAt\": \"...\"\n  }\n]\n```"
+          }
+        },
+        {
+          "name": "Obtenir utilisateur",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/{{userId}}",
+            "description": "## Fonctionnel\nRécupère un utilisateur par ID.\n\n## URL\n`GET {{baseUrl}}/api/users/{{userId}}`\n\n## Réponse 200\nObjet utilisateur (voir structure ci-dessus).\n\n## Erreurs\n- **404** : utilisateur introuvable ou `{{userId}}` vide → relancer Setup"
+          }
+        },
+        {
+          "name": "Mettre à jour utilisateur",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bio\": \"Bio mise à jour\",\n  \"avatar\": \"https://example.com/avatar.png\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/{{userId}}",
+            "description": "## Fonctionnel\nMet à jour partiellement un utilisateur (seuls les champs envoyés sont modifiés).\n\n## URL\n`PUT {{baseUrl}}/api/users/{{userId}}`\n\n## Body possible\n`email`, `firstName`, `lastName`, `password`, `bio`, `avatar`\n\n## Réponse 200\nUtilisateur mis à jour.\n\n## Erreurs\n- **404** : ID invalide\n- **409** : nouvel email déjà pris"
+          }
+        },
+        {
+          "name": "Supprimer utilisateur",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/users/{{userId}}",
+            "description": "## Fonctionnel\nSupprime un utilisateur et ses liaisons.\n\n## URL\n`DELETE {{baseUrl}}/api/users/{{userId}}`\n\n## Réponse 204\nCorps vide.\n\n⚠️ À lancer **uniquement à la fin** des tests."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Groupes",
+      "description": "## Groupes (CRUDS)\n**Base** : `/api/groups`\n\n### Paramètres d'un groupe (cahier des charges)\n| Champ | Description |\n|-------|-------------|\n| name | Nom du groupe |\n| description | Présentation |\n| icon | Icône (URL) |\n| coverPhoto | Photo de couverture |\n| type | `PUBLIC` / `PRIVATE` / `SECRET` |\n| allowMembersToPublish | Autoriser les membres à publier |\n| allowMembersToCreateEvents | Autoriser les membres à créer des événements |\n\n### Règles\n- ≥1 administrateur (`adminIds`)\n- N membres (`memberIds`) ; les admins sont aussi ajoutés comme membres\n- Un groupe peut accueillir des événements et un fil de discussion",
+      "item": [
+        {
+          "name": "Créer groupe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('groupId', pm.response.json().id);",
+                  "  console.log('groupId =', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Amis de Paris\",\n  \"description\": \"Sorties entre amis\",\n  \"icon\": \"https://example.com/icon.png\",\n  \"coverPhoto\": \"https://example.com/cover.jpg\",\n  \"type\": \"PRIVATE\",\n  \"allowMembersToPublish\": true,\n  \"allowMembersToCreateEvents\": true,\n  \"adminIds\": [\"{{userId}}\"],\n  \"memberIds\": [\"{{userId2}}\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/groups",
+            "description": "## Fonctionnel\nCrée un groupe secret/privé/public. Les admins deviennent aussi membres.\nSauvegarde `{{groupId}}`.\n\n## URL\n`POST {{baseUrl}}/api/groups`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"name\": \"Amis de Paris\",\n  \"description\": \"Sorties entre amis\",\n  \"icon\": \"https://...\",\n  \"coverPhoto\": \"https://...\",\n  \"type\": \"PRIVATE\",\n  \"allowMembersToPublish\": true,\n  \"allowMembersToCreateEvents\": true,\n  \"admins\": [{ \"id\": \"...\", \"email\": \"...\", \"firstName\": \"...\", \"lastName\": \"...\" }],\n  \"members\": [ ... ],\n  \"createdAt\": \"...\",\n  \"updatedAt\": \"...\"\n}\n```\n\n## Erreurs\n- **400** : name manquant, adminIds vide, ou IDs utilisateurs invalides"
+          }
+        },
+        {
+          "name": "Lister groupes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups",
+            "description": "## Fonctionnel\nListe tous les groupes avec admins et membres.\n\n## URL\n`GET {{baseUrl}}/api/groups`\n\n## Réponse 200\nTableau de groupes (même structure que création)."
+          }
+        },
+        {
+          "name": "Obtenir groupe",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}",
+            "description": "## Fonctionnel\nDétail d'un groupe.\n\n## URL\n`GET {{baseUrl}}/api/groups/{{groupId}}`\n\n## Réponse 200\nObjet groupe complet.\n\n## Erreurs\n- **404** : groupe introuvable"
+          }
+        },
+        {
+          "name": "Ajouter membre",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/members/{{userId2}}",
+            "description": "## Fonctionnel\nAjoute un membre au groupe.\n\n## URL\n`POST {{baseUrl}}/api/groups/{{groupId}}/members/{{userId2}}`\n\n## Réponse 201\nGroupe mis à jour avec la liste des membres.\n\n## Erreurs\n- **404** : groupe introuvable\n- **409** : membre déjà présent"
+          }
+        },
+        {
+          "name": "Mettre à jour groupe",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Amis de Paris (MAJ)\",\n  \"allowMembersToCreateEvents\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/groups/{{groupId}}",
+            "description": "## Fonctionnel\nMet à jour les paramètres du groupe (nom, type, permissions, listes admin/membres si fournies).\n\n## URL\n`PUT {{baseUrl}}/api/groups/{{groupId}}`\n\n## Réponse 200\nGroupe mis à jour."
+          }
+        },
+        {
+          "name": "Supprimer membre",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/members/{{userId2}}",
+            "description": "## Fonctionnel\nRetire un membre du groupe.\n\n## URL\n`DELETE {{baseUrl}}/api/groups/{{groupId}}/members/{{userId2}}`\n\n## Réponse 204\nCorps vide."
+          }
+        },
+        {
+          "name": "Supprimer groupe",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}",
+            "description": "## Fonctionnel\nSupprime le groupe et ses fils de discussion liés.\n\n## URL\n`DELETE {{baseUrl}}/api/groups/{{groupId}}`\n\n## Réponse 204\n\n⚠️ À lancer **à la fin** uniquement."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Événements",
+      "description": "## Événements (CRUDS)\n**Base** : `/api/events`\n\n### Configuration (étape 1 du parcours)\n| Champ | Description |\n|-------|-------------|\n| name | Titre |\n| description | Programme / infos |\n| startDate / endDate | Dates |\n| location | Lieu |\n| coverPhoto | Photo de couverture |\n| visibility | `PUBLIC` ou `PRIVATE` |\n| organizerIds | Organisateurs (≥1) |\n| participantIds | Participants |\n| groupId | Optionnel : événement rattaché à un groupe |\n| inviteAllGroupMembers | Si true, invite tous les membres du groupe |\n| shoppingListEnabled / carpoolingEnabled / ticketingEnabled | Flags modules |\n\n### Règles\n- Multitude de participants\n- 1 ou plusieurs organisateurs\n- Depuis un groupe : invitation de tous les membres en un clic",
+      "item": [
+        {
+          "name": "Créer événement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('eventId', pm.response.json().id);",
+                  "  console.log('eventId =', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Soirée BBQ\",\n  \"description\": \"Barbecue entre amis\",\n  \"startDate\": \"2026-07-15T18:00:00.000Z\",\n  \"endDate\": \"2026-07-15T23:00:00.000Z\",\n  \"location\": \"Parc de la Villette\",\n  \"coverPhoto\": \"https://example.com/bbq.jpg\",\n  \"visibility\": \"PUBLIC\",\n  \"shoppingListEnabled\": true,\n  \"carpoolingEnabled\": true,\n  \"ticketingEnabled\": true,\n  \"groupId\": \"{{groupId}}\",\n  \"inviteAllGroupMembers\": true,\n  \"organizerIds\": [\"{{userId}}\"],\n  \"participantIds\": [\"{{userId2}}\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/events",
+            "description": "## Fonctionnel\nCrée un événement (parcours guidé étape 1). Avec `inviteAllGroupMembers: true`, tous les membres du groupe sont participants.\nSauvegarde `{{eventId}}`.\n\n## URL\n`POST {{baseUrl}}/api/events`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"name\": \"Soirée BBQ\",\n  \"description\": \"Barbecue entre amis\",\n  \"startDate\": \"2026-07-15T18:00:00.000Z\",\n  \"endDate\": \"2026-07-15T23:00:00.000Z\",\n  \"location\": \"Parc de la Villette\",\n  \"coverPhoto\": \"https://...\",\n  \"visibility\": \"PUBLIC\",\n  \"shoppingListEnabled\": true,\n  \"carpoolingEnabled\": true,\n  \"ticketingEnabled\": true,\n  \"groupId\": \"uuid\",\n  \"organizers\": [{ \"id\": \"...\", \"email\": \"...\", \"firstName\": \"...\", \"lastName\": \"...\" }],\n  \"participants\": [ ... ],\n  \"group\": { \"id\": \"...\", \"name\": \"...\" }\n}\n```\n\n## Erreurs\n- **400** : name/dates manquants ou aucun organisateur"
+          }
+        },
+        {
+          "name": "Lister événements",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events",
+            "description": "## Fonctionnel\nListe tous les événements avec organisateurs et participants.\n\n## URL\n`GET {{baseUrl}}/api/events`\n\n## Réponse 200\nTableau d'événements."
+          }
+        },
+        {
+          "name": "Obtenir événement",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/events/{{eventId}}",
+            "description": "## Fonctionnel\nDétail d'un événement.\n\n## URL\n`GET {{baseUrl}}/api/events/{{eventId}}`\n\n## Réponse 200\nObjet événement complet.\n\n## Erreurs\n- **404** : événement introuvable"
+          }
+        },
+        {
+          "name": "Ajouter participant",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/events/{{eventId}}/participants/{{userId2}}",
+            "description": "## Fonctionnel\nAjoute un participant à l'événement. Si déjà participant → **200** (idempotent).\n\n## URL\n`POST {{baseUrl}}/api/events/{{eventId}}/participants/{{userId2}}`\n\n## Réponse 200/201\nÉvénement avec la liste des participants à jour."
+          }
+        },
+        {
+          "name": "Mettre à jour événement",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location\": \"Jardin du Luxembourg\",\n  \"description\": \"Lieu mis à jour\"\n}"
+            },
+            "url": "{{baseUrl}}/api/events/{{eventId}}",
+            "description": "## Fonctionnel\nMet à jour les infos de l'événement (lieu, dates, flags modules, listes orga/participants si fournies).\n\n## URL\n`PUT {{baseUrl}}/api/events/{{eventId}}`\n\n## Réponse 200\nÉvénement mis à jour."
+          }
+        },
+        {
+          "name": "Supprimer événement",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/events/{{eventId}}",
+            "description": "## Fonctionnel\nSupprime l'événement et ses données liées (albums, sondages, etc.).\n\n## URL\n`DELETE {{baseUrl}}/api/events/{{eventId}}`\n\n## Réponse 204\n\n⚠️ À la fin uniquement."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Discussions",
+      "description": "## Fils de discussion (CRUDS)\n**Base** : `/api/discussions`\n\n### Règles (cahier des charges)\n- Un fil est lié à **1 groupe OU 1 événement**, jamais les deux\n- Contient 0..N messages créés par membres / admins / organisateurs / participants\n- Chaque membre/participant peut **commenter** un message\n\n### Droits\n- Fil groupe → seul membre ou admin peut poster/commenter\n- Fil événement → seul participant ou organisateur",
+      "item": [
+        {
+          "name": "Créer fil (groupe)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('threadId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Discussion du groupe\",\n  \"groupId\": \"{{groupId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/discussions",
+            "description": "## Fonctionnel\nCrée un fil de discussion rattaché à un **groupe** uniquement.\nSauvegarde `{{threadId}}`.\n\n## URL\n`POST {{baseUrl}}/api/discussions`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"title\": \"Discussion du groupe\",\n  \"groupId\": \"uuid\",\n  \"eventId\": null,\n  \"messages\": [],\n  \"group\": { \"id\": \"...\", \"name\": \"...\" },\n  \"event\": null\n}\n```\n\n## Erreurs\n- **400** : les deux IDs fournis, ou aucun\n- **404** : groupe introuvable"
+          }
+        },
+        {
+          "name": "Créer fil (événement)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Discussion de l'événement\",\n  \"eventId\": \"{{eventId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/discussions",
+            "description": "## Fonctionnel\nCrée un fil rattaché à un **événement** uniquement (`eventId`, pas de `groupId`).\n\n## URL\n`POST {{baseUrl}}/api/discussions`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"title\": \"Discussion de l'événement\",\n  \"groupId\": null,\n  \"eventId\": \"uuid\",\n  \"messages\": [],\n  \"event\": { \"id\": \"...\", \"name\": \"...\" }\n}\n```"
+          }
+        },
+        {
+          "name": "Lister fils",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/discussions?groupId={{groupId}}",
+            "description": "## Fonctionnel\nListe les fils. Filtres optionnels : `?groupId=` ou `?eventId=`.\n\n## URL\n`GET {{baseUrl}}/api/discussions?groupId={{groupId}}`\n\n## Réponse 200\nTableau de fils avec messages et commentaires inclus."
+          }
+        },
+        {
+          "name": "Poster message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('messageId', pm.response.json().id);",
+                  "  console.log('messageId =', pm.response.json().id);",
+                  "} else {",
+                  "  console.log('Échec poster message:', pm.response.code, pm.response.text());",
+                  "  console.log('Astuce: authorId doit être membre du groupe OU participant de l événement.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Salut tout le monde !\",\n  \"authorId\": \"{{userId2}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/discussions/{{threadId}}/messages",
+            "description": "## Fonctionnel\nPoste un message dans un fil. `authorId` doit être autorisé (membre/admin ou participant/orga).\nSauvegarde `{{messageId}}`.\n\n## URL\n`POST {{baseUrl}}/api/discussions/{{threadId}}/messages`\n\n## Body\n```json\n{ \"content\": \"Salut !\", \"authorId\": \"uuid\" }\n```\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"content\": \"Salut tout le monde !\",\n  \"threadId\": \"uuid\",\n  \"authorId\": \"uuid\",\n  \"author\": { \"id\": \"...\", \"email\": \"...\", \"firstName\": \"...\" },\n  \"comments\": []\n}\n```\n\n## Erreurs\n- **403** : auteur non membre / non participant\n- **404** : fil introuvable"
+          }
+        },
+        {
+          "name": "Commenter message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Bien reçu !\",\n  \"authorId\": \"{{userId2}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/discussions/messages/{{messageId}}/comments",
+            "description": "## Fonctionnel\nCommente un message existant. Nécessite que « Poster message » ait réussi (sinon `messageId` vide → 404).\n\n## URL\n`POST {{baseUrl}}/api/discussions/messages/{{messageId}}/comments`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"content\": \"Bien reçu !\",\n  \"messageId\": \"uuid\",\n  \"authorId\": \"uuid\",\n  \"author\": { \"id\": \"...\", \"email\": \"...\", \"firstName\": \"...\" }\n}\n```\n\n## Erreurs\n- **403** : auteur non autorisé\n- **404** : message introuvable"
+          }
+        },
+        {
+          "name": "Supprimer fil",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/discussions/{{threadId}}",
+            "description": "## Fonctionnel\nSupprime un fil et tous ses messages/commentaires.\n\n## URL\n`DELETE {{baseUrl}}/api/discussions/{{threadId}}`\n\n## Réponse 204\n\n⚠️ À la fin uniquement."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Albums photo",
+      "description": "## Albums photo (CRUDS)\n**Base** : `/api/albums`\n\n### Règles\n- Un album est associé à **1 événement**\n- Contient 0..N photos postées par un **participant** (ou organisateur)\n- Les photos peuvent être commentées par les participants",
+      "item": [
+        {
+          "name": "Créer album",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('albumId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Souvenirs BBQ\",\n  \"description\": \"Photos de la soirée\",\n  \"eventId\": \"{{eventId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/albums",
+            "description": "## Fonctionnel\nCrée un album photo lié à un événement. Sauvegarde `{{albumId}}`.\n\n## URL\n`POST {{baseUrl}}/api/albums`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"name\": \"Souvenirs BBQ\",\n  \"description\": \"Photos de la soirée\",\n  \"eventId\": \"uuid\",\n  \"photos\": [],\n  \"event\": { \"id\": \"...\", \"name\": \"...\" }\n}\n```"
+          }
+        },
+        {
+          "name": "Ajouter photo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('photoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/photo1.jpg\",\n  \"caption\": \"Le grill\",\n  \"authorId\": \"{{userId2}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/albums/{{albumId}}/photos",
+            "description": "## Fonctionnel\nAjoute une photo dans l'album. L'auteur doit être participant/orga de l'événement.\nSauvegarde `{{photoId}}`.\n\n## URL\n`POST {{baseUrl}}/api/albums/{{albumId}}/photos`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"url\": \"https://example.com/photo1.jpg\",\n  \"caption\": \"Le grill\",\n  \"albumId\": \"uuid\",\n  \"authorId\": \"uuid\",\n  \"author\": { \"id\": \"...\", \"email\": \"...\" },\n  \"comments\": []\n}\n```\n\n## Erreurs\n- **403** : auteur non participant"
+          }
+        },
+        {
+          "name": "Commenter photo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Super photo !\",\n  \"authorId\": \"{{userId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/albums/photos/{{photoId}}/comments",
+            "description": "## Fonctionnel\nCommente une photo (participant/orga uniquement).\n\n## URL\n`POST {{baseUrl}}/api/albums/photos/{{photoId}}/comments`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"content\": \"Super photo !\",\n  \"photoId\": \"uuid\",\n  \"authorId\": \"uuid\",\n  \"author\": { \"id\": \"...\", \"email\": \"...\" }\n}\n```"
+          }
+        },
+        {
+          "name": "Lister albums d'un événement",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/albums?eventId={{eventId}}",
+            "description": "## Fonctionnel\nListe les albums (filtre `eventId` recommandé).\n\n## URL\n`GET {{baseUrl}}/api/albums?eventId={{eventId}}`\n\n## Réponse 200\nTableau d'albums avec photos et commentaires."
+          }
+        },
+        {
+          "name": "Supprimer album",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/albums/{{albumId}}",
+            "description": "## Fonctionnel\nSupprime l'album et ses photos/commentaires.\n\n## URL\n`DELETE {{baseUrl}}/api/albums/{{albumId}}`\n\n## Réponse 204"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Sondages",
+      "description": "## Sondages (CRUDS)\n**Base** : `/api/polls`\n\n### Règles\n- Un événement peut avoir 0..N sondages créés par un **organisateur**\n- Un sondage a 1..N questions\n- Chaque question a plusieurs options ; **une seule réponse** possible par participant et par question\n- Les participants répondent via `/respond`",
+      "item": [
+        {
+          "name": "Créer sondage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('pollId', j.id);",
+                  "  pm.collectionVariables.set('questionId', j.questions[0].id);",
+                  "  pm.collectionVariables.set('optionId', j.questions[0].options[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Choix du menu\",\n  \"eventId\": \"{{eventId}}\",\n  \"creatorId\": \"{{userId}}\",\n  \"questions\": [\n    {\n      \"text\": \"Quel plat ?\",\n      \"options\": [\"Pizza\", \"Burger\", \"Salade\"]\n    },\n    {\n      \"text\": \"Quelle boisson ?\",\n      \"options\": [\"Eau\", \"Soda\"]\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/polls",
+            "description": "## Fonctionnel\nCrée un sondage (organisateur uniquement). Sauvegarde `pollId`, `questionId`, `optionId`.\n\n## URL\n`POST {{baseUrl}}/api/polls`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"title\": \"Choix du menu\",\n  \"eventId\": \"uuid\",\n  \"creatorId\": \"uuid\",\n  \"creator\": { \"id\": \"...\", \"email\": \"...\" },\n  \"questions\": [\n    {\n      \"id\": \"uuid\",\n      \"text\": \"Quel plat ?\",\n      \"options\": [\n        { \"id\": \"uuid\", \"text\": \"Pizza\" },\n        { \"id\": \"uuid\", \"text\": \"Burger\" }\n      ],\n      \"responses\": []\n    }\n  ]\n}\n```\n\n## Erreurs\n- **403** : créateur non organisateur\n- **400** : pas de questions / options insuffisantes"
+          }
+        },
+        {
+          "name": "Répondre au sondage",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId2}}\",\n  \"answers\": [\n    { \"questionId\": \"{{questionId}}\", \"optionId\": \"{{optionId}}\" }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/polls/{{pollId}}/respond",
+            "description": "## Fonctionnel\nUn participant choisit **une option par question**. Une nouvelle réponse sur la même question remplace la précédente (toujours 1 seule).\n\n## URL\n`POST {{baseUrl}}/api/polls/{{pollId}}/respond`\n\n## Body\n```json\n{\n  \"userId\": \"uuid\",\n  \"answers\": [\n    { \"questionId\": \"uuid\", \"optionId\": \"uuid\" }\n  ]\n}\n```\n\n## Réponse 200\nSondage complet avec `responses` remplies.\n\n## Erreurs\n- **403** : utilisateur non participant\n- **400** : question/option invalide"
+          }
+        },
+        {
+          "name": "Obtenir sondage",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/polls/{{pollId}}",
+            "description": "## Fonctionnel\nDétail d'un sondage avec questions, options et réponses.\n\n## URL\n`GET {{baseUrl}}/api/polls/{{pollId}}`\n\n## Réponse 200\nObjet sondage complet."
+          }
+        },
+        {
+          "name": "Supprimer sondage",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/polls/{{pollId}}",
+            "description": "## Fonctionnel\nSupprime le sondage et ses réponses.\n\n## URL\n`DELETE {{baseUrl}}/api/polls/{{pollId}}`\n\n## Réponse 204"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Billetterie",
+      "description": "## Billetterie (CRUDS)\n**Base** : `/api/tickets`\n\n### Règles\n- Réservée aux événements **PUBLIC** avec `ticketingEnabled: true`\n- Un organisateur crée 1..N **types de billets** : nom, montant, quantité limitée\n- Une personne extérieure n'obtient qu'**1 seul billet** par événement (contrôle par email)\n\n### Données d'un achat\n- type de billet, nom, prénom, adresse complète, date d'achat, email",
+      "item": [
+        {
+          "name": "Créer type de billet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('ticketTypeId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"VIP\",\n  \"amount\": 49.9,\n  \"quantityLimit\": 100,\n  \"eventId\": \"{{eventId}}\",\n  \"organizerId\": \"{{userId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tickets/types",
+            "description": "## Fonctionnel\nCrée un type de billet pour un événement public avec billetterie activée.\nSauvegarde `{{ticketTypeId}}`.\n\n## URL\n`POST {{baseUrl}}/api/tickets/types`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"name\": \"VIP\",\n  \"amount\": 49.9,\n  \"quantityLimit\": 100,\n  \"eventId\": \"uuid\",\n  \"purchases\": [],\n  \"event\": { \"id\": \"...\", \"name\": \"...\", \"visibility\": \"PUBLIC\" }\n}\n```\n\n## Erreurs\n- **400** : événement non public / billetterie désactivée\n- **403** : pas organisateur"
+          }
+        },
+        {
+          "name": "Acheter billet",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('buyerEmail', 'buyer_' + Date.now() + '@example.com');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketTypeId\": \"{{ticketTypeId}}\",\n  \"firstName\": \"Paul\",\n  \"lastName\": \"Externe\",\n  \"address\": \"10 rue de la Paix, Paris\",\n  \"email\": \"{{buyerEmail}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tickets/purchases",
+            "description": "## Fonctionnel\nAchète un billet pour une personne externe. Email unique généré pour éviter le 409 au retest.\n\n## URL\n`POST {{baseUrl}}/api/tickets/purchases`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"ticketTypeId\": \"uuid\",\n  \"firstName\": \"Paul\",\n  \"lastName\": \"Externe\",\n  \"address\": \"10 rue de la Paix, Paris\",\n  \"email\": \"buyer_...@example.com\",\n  \"purchaseDate\": \"...\",\n  \"ticketType\": {\n    \"id\": \"...\",\n    \"name\": \"VIP\",\n    \"amount\": 49.9,\n    \"event\": { \"id\": \"...\", \"name\": \"...\" }\n  }\n}\n```\n\n## Erreurs\n- **409** : déjà 1 billet pour cet email sur l'événement, ou stock épuisé"
+          }
+        },
+        {
+          "name": "Lister types de billets",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tickets/types?eventId={{eventId}}",
+            "description": "## Fonctionnel\nListe les types de billets (filtre `eventId`).\n\n## URL\n`GET {{baseUrl}}/api/tickets/types?eventId={{eventId}}`\n\n## Réponse 200\nTableau de types avec leurs achats."
+          }
+        },
+        {
+          "name": "Lister achats",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tickets/purchases",
+            "description": "## Fonctionnel\nListe les achats. Filtres optionnels : `?ticketTypeId=` ou `?email=`.\n\n## URL\n`GET {{baseUrl}}/api/tickets/purchases`\n\n## Réponse 200\nTableau d'achats avec type de billet et événement."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Shopping list",
+      "description": "## Shopping list (CRUDS)\n**Base** : `/api/shopping`\n\n### Règles\n- Activée si `shoppingListEnabled: true` sur l'événement\n- Un utilisateur indique ce qu'il apporte : **nom**, **quantité**, **heure d'arrivée**\n- Chaque chose apportée doit être **unique par événement** (même nom → 409)",
+      "item": [
+        {
+          "name": "Ajouter item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('itemName', 'Chips_' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('shoppingId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{itemName}}\",\n  \"quantity\": 3,\n  \"arrivalTime\": \"2026-07-15T17:30:00.000Z\",\n  \"eventId\": \"{{eventId}}\",\n  \"userId\": \"{{userId2}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/shopping",
+            "description": "## Fonctionnel\nAjoute un item à la shopping list. Nom unique généré pour retester facilement.\nSauvegarde `{{shoppingId}}`.\n\n## URL\n`POST {{baseUrl}}/api/shopping`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"name\": \"Chips_...\",\n  \"quantity\": 3,\n  \"arrivalTime\": \"2026-07-15T17:30:00.000Z\",\n  \"eventId\": \"uuid\",\n  \"userId\": \"uuid\",\n  \"user\": { \"id\": \"...\", \"email\": \"...\" },\n  \"event\": { \"id\": \"...\", \"name\": \"...\" }\n}\n```\n\n## Erreurs\n- **400** : shopping list non activée\n- **409** : nom déjà présent pour cet événement"
+          }
+        },
+        {
+          "name": "Lister items",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/shopping?eventId={{eventId}}",
+            "description": "## Fonctionnel\nListe les items (filtre `eventId`).\n\n## URL\n`GET {{baseUrl}}/api/shopping?eventId={{eventId}}`\n\n## Réponse 200\nTableau d'items triés par heure d'arrivée."
+          }
+        },
+        {
+          "name": "Mettre à jour item",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 5\n}"
+            },
+            "url": "{{baseUrl}}/api/shopping/{{shoppingId}}",
+            "description": "## Fonctionnel\nModifie nom / quantité / heure d'arrivée.\n\n## URL\n`PUT {{baseUrl}}/api/shopping/{{shoppingId}}`\n\n## Réponse 200\nItem mis à jour."
+          }
+        },
+        {
+          "name": "Supprimer item",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/shopping/{{shoppingId}}",
+            "description": "## Fonctionnel\nSupprime un item de la shopping list.\n\n## URL\n`DELETE {{baseUrl}}/api/shopping/{{shoppingId}}`\n\n## Réponse 204"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Covoiturage (Bonus)",
+      "description": "## Covoiturage — Bonus (CRUDS)\n**Base** : `/api/carpools`\n\n### Règles\n- Activé si `carpoolingEnabled: true`\n- Un utilisateur indique : lieu de départ, heure de départ, prix, places disponibles, temps max d'écart (minutes)",
+      "item": [
+        {
+          "name": "Créer covoiturage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('carpoolId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departureLocation\": \"Lyon Part-Dieu\",\n  \"departureTime\": \"2026-07-15T14:00:00.000Z\",\n  \"price\": 12.5,\n  \"availableSeats\": 3,\n  \"maxTimeDeviationMinutes\": 30,\n  \"eventId\": \"{{eventId}}\",\n  \"userId\": \"{{userId2}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/carpools",
+            "description": "## Fonctionnel\nPropose un trajet en covoiturage vers l'événement.\nSauvegarde `{{carpoolId}}`.\n\n## URL\n`POST {{baseUrl}}/api/carpools`\n\n## Réponse 201\n```json\n{\n  \"id\": \"uuid\",\n  \"departureLocation\": \"Lyon Part-Dieu\",\n  \"departureTime\": \"2026-07-15T14:00:00.000Z\",\n  \"price\": 12.5,\n  \"availableSeats\": 3,\n  \"maxTimeDeviationMinutes\": 30,\n  \"eventId\": \"uuid\",\n  \"userId\": \"uuid\",\n  \"user\": { \"id\": \"...\", \"email\": \"...\" },\n  \"event\": { \"id\": \"...\", \"name\": \"...\" }\n}\n```\n\n## Erreurs\n- **400** : covoiturage non activé sur l'événement"
+          }
+        },
+        {
+          "name": "Lister covoiturages",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/carpools?eventId={{eventId}}",
+            "description": "## Fonctionnel\nListe les covoiturages d'un événement.\n\n## URL\n`GET {{baseUrl}}/api/carpools?eventId={{eventId}}`\n\n## Réponse 200\nTableau de covoiturages triés par heure de départ."
+          }
+        },
+        {
+          "name": "Mettre à jour covoiturage",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"availableSeats\": 2,\n  \"price\": 10\n}"
+            },
+            "url": "{{baseUrl}}/api/carpools/{{carpoolId}}",
+            "description": "## Fonctionnel\nMet à jour places, prix, lieu, horaires, écart max.\n\n## URL\n`PUT {{baseUrl}}/api/carpools/{{carpoolId}}`\n\n## Réponse 200\nCovoiturage mis à jour."
+          }
+        },
+        {
+          "name": "Supprimer covoiturage",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/carpools/{{carpoolId}}",
+            "description": "## Fonctionnel\nSupprime une offre de covoiturage.\n\n## URL\n`DELETE {{baseUrl}}/api/carpools/{{carpoolId}}`\n\n## Réponse 204"
+          }
+        }
+      ]
+    }
+  ]
+}

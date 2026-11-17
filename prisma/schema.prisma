@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  firstName String
+  lastName  String
+  password  String?
+  bio       String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizedEvents EventOrganizer[]
+  participatingEvents EventParticipant[]
+  adminGroups GroupAdmin[]
+  memberGroups GroupMember[]
+  messages Message[]
+  messageComments MessageComment[]
+  photos Photo[]
+  photoComments PhotoComment[]
+  pollsCreated Poll[]
+  pollResponses PollResponse[]
+  shoppingItems ShoppingListItem[]
+  carpools Carpool[]
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum GroupType {
+  PUBLIC
+  PRIVATE
+  SECRET
+}
+
+model Event {
+  id                   String     @id @default(uuid())
+  name                 String
+  description          String?
+  startDate            DateTime
+  endDate              DateTime
+  location             String?
+  coverPhoto           String?
+  visibility           Visibility @default(PUBLIC)
+  shoppingListEnabled  Boolean    @default(false)
+  carpoolingEnabled    Boolean    @default(false)
+  ticketingEnabled     Boolean    @default(false)
+  groupId              String?
+  group                Group?     @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  organizers   EventOrganizer[]
+  participants EventParticipant[]
+  discussionThreads DiscussionThread[]
+  albums       PhotoAlbum[]
+  polls        Poll[]
+  ticketTypes  TicketType[]
+  shoppingItems ShoppingListItem[]
+  carpools     Carpool[]
+}
+
+model EventOrganizer {
+  eventId String
+  userId  String
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+model EventParticipant {
+  eventId String
+  userId  String
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+model Group {
+  id                        String    @id @default(uuid())
+  name                      String
+  description               String?
+  icon                      String?
+  coverPhoto                String?
+  type                      GroupType @default(PUBLIC)
+  allowMembersToPublish     Boolean   @default(true)
+  allowMembersToCreateEvents Boolean  @default(false)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  admins  GroupAdmin[]
+  members GroupMember[]
+  events  Event[]
+  discussionThreads DiscussionThread[]
+}
+
+model GroupAdmin {
+  groupId String
+  userId  String
+  group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+}
+
+model GroupMember {
+  groupId String
+  userId  String
+  group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+}
+
+model DiscussionThread {
+  id        String   @id @default(uuid())
+  title     String?
+  groupId   String?
+  eventId   String?
+  group     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  content   String
+  threadId  String
+  authorId  String
+  thread    DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments MessageComment[]
+}
+
+model MessageComment {
+  id        String   @id @default(uuid())
+  content   String
+  messageId String
+  authorId  String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PhotoAlbum {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos Photo[]
+}
+
+model Photo {
+  id        String   @id @default(uuid())
+  url       String
+  caption   String?
+  albumId   String
+  authorId  String
+  album     PhotoAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments PhotoComment[]
+}
+
+model PhotoComment {
+  id        String   @id @default(uuid())
+  content   String
+  photoId   String
+  authorId  String
+  photo     Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Poll {
+  id        String   @id @default(uuid())
+  title     String
+  eventId   String
+  creatorId String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questions PollQuestion[]
+}
+
+model PollQuestion {
+  id     String @id @default(uuid())
+  text   String
+  pollId String
+  poll   Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  options   PollAnswerOption[]
+  responses PollResponse[]
+}
+
+model PollAnswerOption {
+  id         String @id @default(uuid())
+  text       String
+  questionId String
+  question   PollQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  responses PollResponse[]
+}
+
+model PollResponse {
+  id         String @id @default(uuid())
+  questionId String
+  optionId   String
+  userId     String
+  question   PollQuestion     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  option     PollAnswerOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([questionId, userId])
+}
+
+model TicketType {
+  id            String  @id @default(uuid())
+  name          String
+  amount        Float
+  quantityLimit Int
+  eventId       String
+  event         Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchases TicketPurchase[]
+}
+
+model TicketPurchase {
+  id           String   @id @default(uuid())
+  ticketTypeId String
+  firstName    String
+  lastName     String
+  address      String
+  email        String
+  purchaseDate DateTime @default(now())
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketTypeId, email])
+}
+
+model ShoppingListItem {
+  id          String   @id @default(uuid())
+  name        String
+  quantity    Int
+  arrivalTime DateTime
+  eventId     String
+  userId      String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([eventId, name])
+}
+
+model Carpool {
+  id                String   @id @default(uuid())
+  departureLocation String
+  departureTime     DateTime
+  price             Float
+  availableSeats    Int
+  maxTimeDeviationMinutes Int
+  eventId           String
+  userId            String
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
